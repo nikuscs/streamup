@@ -505,7 +505,7 @@ const CodeComponent = ({
       data-language={language}
       data-streamdown="code-block"
       language={language}
-      theme={shikiConfig.theme}
+      themes={shikiConfig.themes}
       highlighter={shikiConfig.highlighter}
       preClassName="overflow-x-auto font-mono text-xs p-4 bg-muted/40"
     >
@@ -523,7 +523,14 @@ const MemoCode = memo<
   DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTMLElement> & ExtraProps
 >(
   CodeComponent,
-  (p, n) => p.className === n.className && sameNodePosition(p.node, n.node)
+  (p, n) => {
+    // Compare basic props
+    if (p.className !== n.className || !sameNodePosition(p.node, n.node)) {
+      return false;
+    }
+    // Compare children content (the actual code content)
+    return p.children === n.children;
+  }
 );
 MemoCode.displayName = "MarkdownCode";
 

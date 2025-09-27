@@ -45,19 +45,19 @@ export type ControlsConfig =
 export type StreamdownProps = HardenReactMarkdownProps & {
   parseIncompleteMarkdown?: boolean;
   className?: string;
-  shikiTheme?: BundledTheme;
+  shikiThemes?: { light: BundledTheme; dark: BundledTheme };
   shikiHighlighter?: HighlighterCore;
   mermaidConfig?: MermaidConfig;
   controls?: ControlsConfig;
 };
 
 type ShikiContextType = {
-  theme: BundledTheme;
+  themes?: { light: BundledTheme; dark: BundledTheme };
   highlighter?: HighlighterCore;
 };
 
 export const ShikiContext = createContext<ShikiContextType>({
-  theme: "github-light" as BundledTheme,
+  themes: undefined,
   highlighter: undefined,
 });
 
@@ -106,7 +106,7 @@ export const Streamdown = memo(
     rehypePlugins,
     remarkPlugins,
     className,
-    shikiTheme = "github-light",
+    shikiThemes,
     shikiHighlighter,
     mermaidConfig,
     controls = true,
@@ -125,7 +125,7 @@ export const Streamdown = memo(
     );
 
     return (
-      <ShikiContext.Provider value={{ theme: shikiTheme, highlighter: shikiHighlighter }}>
+      <ShikiContext.Provider value={{ themes: shikiThemes, highlighter: shikiHighlighter }}>
         <MermaidConfigContext.Provider value={mermaidConfig}>
           <ControlsContext.Provider value={controls}>
             <div className={cn("space-y-4", className)} {...props}>
@@ -162,7 +162,7 @@ export const Streamdown = memo(
   },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
-    prevProps.shikiTheme === nextProps.shikiTheme &&
+    prevProps.shikiThemes === nextProps.shikiThemes &&
     prevProps.shikiHighlighter === nextProps.shikiHighlighter
 );
 Streamdown.displayName = "Streamdown";

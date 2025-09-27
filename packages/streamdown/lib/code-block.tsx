@@ -24,7 +24,7 @@ const PRE_TAG_REGEX = /<pre(\s|>)/;
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string;
   language: BundledLanguage;
-  theme?: BundledTheme;
+  themes?: { light: BundledTheme; dark: BundledTheme };
   highlighter?: HighlighterCore;
   preClassName?: string;
 };
@@ -42,7 +42,7 @@ const getFallbackLanguage = (): SpecialLanguage => "text";
 const highlightCode = (
   code: string,
   language: BundledLanguage,
-  theme: BundledTheme = "github-light",
+  themes?: { light: BundledTheme; dark: BundledTheme },
   highlighter?: HighlighterCore,
   preClassName?: string
 ): string => {
@@ -55,9 +55,14 @@ const highlightCode = (
     const supportedLanguage = highlighter.getLoadedLanguages().includes(language)
     const lang = supportedLanguage ? language : getFallbackLanguage();
 
+    // Use dual themes if provided, otherwise fallback to single theme
+    const themeConfig = themes
+      ? { themes: themes }
+      : { theme: "github-light" as BundledTheme };
+
     const html = highlighter.codeToHtml(code, {
       lang,
-      theme,
+      ...themeConfig,
     });
 
     const addPreClass = (html: string) => {
@@ -90,7 +95,7 @@ const removePreBackground = (html: string) => {
 export const CodeBlock = ({
   code,
   language,
-  theme = "github-light",
+  themes,
   highlighter,
   className,
   children,
@@ -98,8 +103,15 @@ export const CodeBlock = ({
   ...rest
 }: CodeBlockProps) => {
   const html = useMemo(() => {
-    return highlightCode(code, language, theme, highlighter, preClassName);
-  }, [code, language, theme, highlighter, preClassName]);
+    return highlightCode(code, language, themes, highlighter, preClassName);
+  }, [
+    code,
+    language,
+    themes?.light,
+    themes?.dark,
+    highlighter,
+    preClassName
+  ]);
 
   return (
     <CodeBlockContext.Provider value={{ code }}>

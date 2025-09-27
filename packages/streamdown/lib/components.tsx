@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { ExtraProps, Options } from "react-markdown";
 import type { BundledLanguage } from "shiki";
-import { ControlsContext, MermaidConfigContext } from "../index";
+import { ControlsContext, MermaidConfigContext, ShikiContext } from "../index";
 import {
   CodeBlock,
   CodeBlockCopyButton,
@@ -440,6 +440,7 @@ const CodeComponent = ({
   const inline = node?.position?.start.line === node?.position?.end.line;
   const mermaidConfig = useContext(MermaidConfigContext);
   const controlsConfig = useContext(ControlsContext);
+  const shikiConfig = useContext(ShikiContext);
 
   if (inline) {
     return (
@@ -504,6 +505,8 @@ const CodeComponent = ({
       data-language={language}
       data-streamdown="code-block"
       language={language}
+      theme={shikiConfig.theme}
+      highlighter={shikiConfig.highlighter}
       preClassName="overflow-x-auto font-mono text-xs p-4 bg-muted/40"
     >
       {showCodeControls && (

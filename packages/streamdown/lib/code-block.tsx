@@ -7,18 +7,16 @@ import {
   type HTMLAttributes,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   type BundledLanguage,
   type BundledTheme,
-  bundledLanguages,
-  createHighlighter,
+  type HighlighterCore,
   type SpecialLanguage,
 } from "shiki";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import { ShikiThemeContext } from "../index";
 import { cn, save } from "./utils";
 
 const PRE_TAG_REGEX = /<pre(\s|>)/;
@@ -26,6 +24,8 @@ const PRE_TAG_REGEX = /<pre(\s|>)/;
 type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
   code: string;
   language: BundledLanguage;
+  theme?: BundledTheme;
+  highlighter?: HighlighterCore;
   preClassName?: string;
 };
 
@@ -37,128 +37,27 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
   code: "",
 });
 
-class HighlighterManager {
-  private lightHighlighter: Awaited<
-    ReturnType<typeof createHighlighter>
-  > | null = null;
-  private darkHighlighter: Awaited<
-    ReturnType<typeof createHighlighter>
-  > | null = null;
-  private lightTheme: BundledTheme | null = null;
-  private darkTheme: BundledTheme | null = null;
-  private readonly loadedLanguages: Set<BundledLanguage> = new Set();
-  private initializationPromise: Promise<void> | null = null;
+const getFallbackLanguage = (): SpecialLanguage => "text";
 
-  private isLanguageSupported(language: string): language is BundledLanguage {
-    return Object.hasOwn(bundledLanguages, language);
-  }
-
-  private getFallbackLanguage(): SpecialLanguage {
-    return "text";
-  }
-
-  private async ensureHighlightersInitialized(
-    themes: [BundledTheme, BundledTheme],
-    language: BundledLanguage
-  ): Promise<void> {
-    const [lightTheme, darkTheme] = themes;
-    const jsEngine = createJavaScriptRegexEngine({ forgiving: true });
-
-    // Check if we need to recreate highlighters due to theme change
-    const needsLightRecreation =
-      !this.lightHighlighter || this.lightTheme !== lightTheme;
-    const needsDarkRecreation =
-      !this.darkHighlighter || this.darkTheme !== darkTheme;
-
-    if (needsLightRecreation || needsDarkRecreation) {
-      // If themes changed, reset loaded languages
-      this.loadedLanguages.clear();
+const highlightCode = (
+  code: string,
+  language: BundledLanguage,
+  theme: BundledTheme = "github-light",
+  highlighter?: HighlighterCore,
+  preClassName?: string
+): string => {
+  try {
+    // If no highlighter provided, fall back to plain HTML
+    if (!highlighter) {
+      throw new Error('No highlighter provided');
     }
 
-    // Check if we need to load the language
-    const isLanguageSupported = this.isLanguageSupported(language);
-    const needsLanguageLoad =
-      !this.loadedLanguages.has(language) && isLanguageSupported;
+    const supportedLanguage = highlighter.getLoadedLanguages().includes(language)
+    const lang = supportedLanguage ? language : getFallbackLanguage();
 
-    // Create or recreate light highlighter if needed
-    if (needsLightRecreation) {
-      this.lightHighlighter = await createHighlighter({
-        themes: [lightTheme],
-        langs: isLanguageSupported ? [language] : [],
-        engine: jsEngine,
-      });
-      this.lightTheme = lightTheme;
-      if (isLanguageSupported) {
-        this.loadedLanguages.add(language);
-      }
-    } else if (needsLanguageLoad) {
-      // Load the language if not already loaded
-      await this.lightHighlighter?.loadLanguage(language);
-    }
-
-    // Create or recreate dark highlighter if needed
-    if (needsDarkRecreation) {
-      // If recreating dark highlighter, load all previously loaded languages plus the new one
-      const langsToLoad = needsLanguageLoad
-        ? [...this.loadedLanguages].concat(
-            isLanguageSupported ? [language] : []
-          )
-        : Array.from(this.loadedLanguages);
-
-      this.darkHighlighter = await createHighlighter({
-        themes: [darkTheme],
-        langs:
-          langsToLoad.length > 0
-            ? langsToLoad
-            : isLanguageSupported
-              ? [language]
-              : [],
-        engine: jsEngine,
-      });
-      this.darkTheme = darkTheme;
-    } else if (needsLanguageLoad) {
-      // Load the language if not already loaded
-      await this.darkHighlighter?.loadLanguage(language);
-    }
-
-    // Mark language as loaded after both highlighters have it
-    if (needsLanguageLoad) {
-      this.loadedLanguages.add(language);
-    }
-  }
-
-  async highlightCode(
-    code: string,
-    language: BundledLanguage,
-    themes: [BundledTheme, BundledTheme],
-    preClassName?: string
-  ): Promise<[string, string]> {
-    // Ensure only one initialization happens at a time
-    if (this.initializationPromise) {
-      await this.initializationPromise;
-    }
-    // Initialize or load language
-    this.initializationPromise = this.ensureHighlightersInitialized(
-      themes,
-      language
-    );
-    await this.initializationPromise;
-    this.initializationPromise = null;
-
-    const [lightTheme, darkTheme] = themes;
-
-    const lang = this.isLanguageSupported(language)
-      ? language
-      : this.getFallbackLanguage();
-
-    const light = this.lightHighlighter?.codeToHtml(code, {
+    const html = highlighter.codeToHtml(code, {
       lang,
-      theme: lightTheme,
-    });
-
-    const dark = this.darkHighlighter?.codeToHtml(code, {
-      lang,
-      theme: darkTheme,
+      theme,
     });
 
     const addPreClass = (html: string) => {
@@ -168,15 +67,17 @@ class HighlighterManager {
       return html.replace(PRE_TAG_REGEX, `<pre class="${preClassName}"$1`);
     };
 
-    return [
-      removePreBackground(addPreClass(light)),
-      removePreBackground(addPreClass(dark)),
-    ];
+    return removePreBackground(addPreClass(html));
+  } catch (error) {
+    // Fallback to simple pre tag if highlighting fails
+    console.warn("Syntax highlighting failed:", error);
+    const escapedCode = code
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return `<pre class="${preClassName || ""}"><code>${escapedCode}</code></pre>`;
   }
-}
-
-// Create a singleton instance of the highlighter manager
-const highlighterManager = new HighlighterManager();
+};
 
 // Remove background styles from <pre> tags (inline style)
 const removePreBackground = (html: string) => {
@@ -189,32 +90,16 @@ const removePreBackground = (html: string) => {
 export const CodeBlock = ({
   code,
   language,
+  theme = "github-light",
+  highlighter,
   className,
   children,
   preClassName,
   ...rest
 }: CodeBlockProps) => {
-  const [html, setHtml] = useState<string>("");
-  const [darkHtml, setDarkHtml] = useState<string>("");
-  const mounted = useRef(false);
-  const [lightTheme, darkTheme] = useContext(ShikiThemeContext);
-
-  useEffect(() => {
-    mounted.current = true;
-
-    highlighterManager
-      .highlightCode(code, language, [lightTheme, darkTheme], preClassName)
-      .then(([light, dark]) => {
-        if (mounted.current) {
-          setHtml(light);
-          setDarkHtml(dark);
-        }
-      });
-
-    return () => {
-      mounted.current = false;
-    };
-  }, [code, language, lightTheme, darkTheme, preClassName]);
+  const html = useMemo(() => {
+    return highlightCode(code, language, theme, highlighter, preClassName);
+  }, [code, language, theme, highlighter, preClassName]);
 
   return (
     <CodeBlockContext.Provider value={{ code }}>
@@ -234,17 +119,9 @@ export const CodeBlock = ({
         <div className="w-full">
           <div className="min-w-full">
             <div
-              className={cn("overflow-x-auto dark:hidden", className)}
+              className={cn("overflow-x-auto", className)}
               // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
               dangerouslySetInnerHTML={{ __html: html }}
-              data-code-block
-              data-language={language}
-              {...rest}
-            />
-            <div
-              className={cn("hidden overflow-x-auto dark:block", className)}
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: "this is needed."
-              dangerouslySetInnerHTML={{ __html: darkHtml }}
               data-code-block
               data-language={language}
               {...rest}

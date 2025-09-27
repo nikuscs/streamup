@@ -6,7 +6,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import type { BundledTheme } from "shiki";
+import type { BundledTheme, HighlighterCore } from "shiki";
 import "katex/dist/katex.min.css";
 import hardenReactMarkdownImport from "harden-react-markdown";
 import type { MermaidConfig } from "mermaid";
@@ -45,15 +45,21 @@ export type ControlsConfig =
 export type StreamdownProps = HardenReactMarkdownProps & {
   parseIncompleteMarkdown?: boolean;
   className?: string;
-  shikiTheme?: [BundledTheme, BundledTheme];
+  shikiTheme?: BundledTheme;
+  shikiHighlighter?: HighlighterCore;
   mermaidConfig?: MermaidConfig;
   controls?: ControlsConfig;
 };
 
-export const ShikiThemeContext = createContext<[BundledTheme, BundledTheme]>([
-  "github-light" as BundledTheme,
-  "github-dark" as BundledTheme,
-]);
+type ShikiContextType = {
+  theme: BundledTheme;
+  highlighter?: HighlighterCore;
+};
+
+export const ShikiContext = createContext<ShikiContextType>({
+  theme: "github-light" as BundledTheme,
+  highlighter: undefined,
+});
 
 export const MermaidConfigContext = createContext<MermaidConfig | undefined>(
   undefined
@@ -100,7 +106,8 @@ export const Streamdown = memo(
     rehypePlugins,
     remarkPlugins,
     className,
-    shikiTheme = ["github-light", "github-dark"],
+    shikiTheme = "github-light",
+    shikiHighlighter,
     mermaidConfig,
     controls = true,
     ...props
@@ -118,7 +125,7 @@ export const Streamdown = memo(
     );
 
     return (
-      <ShikiThemeContext.Provider value={shikiTheme}>
+      <ShikiContext.Provider value={{ theme: shikiTheme, highlighter: shikiHighlighter }}>
         <MermaidConfigContext.Provider value={mermaidConfig}>
           <ControlsContext.Provider value={controls}>
             <div className={cn("space-y-4", className)} {...props}>
@@ -150,11 +157,12 @@ export const Streamdown = memo(
             </div>
           </ControlsContext.Provider>
         </MermaidConfigContext.Provider>
-      </ShikiThemeContext.Provider>
+      </ShikiContext.Provider>
     );
   },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
-    prevProps.shikiTheme === nextProps.shikiTheme
+    prevProps.shikiTheme === nextProps.shikiTheme &&
+    prevProps.shikiHighlighter === nextProps.shikiHighlighter
 );
 Streamdown.displayName = "Streamdown";
